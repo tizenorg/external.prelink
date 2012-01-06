@@ -1,0 +1,53 @@
+#! /bin/sh -e
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: Removed some tests.
+
+[ -f debian/patches/00patch-opts ] && . debian/patches/00patch-opts
+patch_opts="${patch_opts:--f --no-backup-if-mismatch}"
+
+if [ $# -ne 1 ]; then
+    echo >&2 "`basename $0`: script expects -patch|-unpatch as argument"
+    exit 1
+fi
+case "$1" in
+       -patch) patch $patch_opts -p1 < $0;;
+       -unpatch) patch $patch_opts -p1 -R < $0;;
+        *)
+                echo >&2 "`basename $0`: script expects -patch|-unpatch as argument"
+                exit 1;;
+esac
+
+exit 0
+@DPATCH@
+
+diff -urN prelink-0.0.20040520.orig/testsuite/Makefile.am prelink-0.0.20040520/testsuite/Makefile.am
+--- prelink-0.0.20040520.orig/testsuite/Makefile.am	2004-05-14 21:55:10.000000000 +0000
++++ prelink-0.0.20040520/testsuite/Makefile.am	2004-06-03 15:18:21.000000000 +0000
+@@ -10,9 +10,8 @@
+ 	reloc7.sh reloc8.sh reloc9.sh reloc10.sh reloc11.sh \
+ 	shuffle1.sh shuffle2.sh shuffle3.sh shuffle4.sh shuffle5.sh \
+ 	shuffle6.sh shuffle7.sh \
+-	layout1.sh layout2.sh tls1.sh tls2.sh tls3.sh tls4.sh tls5.sh tls6.sh \
+-	cxx1.sh quick1.sh cycle1.sh cycle2.sh deps1.sh deps2.sh \
+-	undosyslibs.sh
++	layout1.sh layout2.sh tls1.sh tls2.sh tls3.sh tls4.sh tls5.sh \
++	cxx1.sh cycle1.sh cycle2.sh deps1.sh deps2.sh 
+ TESTS_ENVIRONMENT = \
+ 	PRELINK="../src/prelink -c ./prelink.conf -C ./prelink.cache --ld-library-path=. --dynamic-linker=`echo ./ld*.so.*[0-9]`" \
+ 	CC="$(CC) $(LINKOPTS)" CCLINK="$(CC) -Wl,--dynamic-linker=`echo ./ld*.so.*[0-9]`" \
+diff -urN prelink-0.0.20040520.orig/testsuite/Makefile.in prelink-0.0.20040520/testsuite/Makefile.in
+--- prelink-0.0.20040520.orig/testsuite/Makefile.in	2004-05-14 21:55:27.000000000 +0000
++++ prelink-0.0.20040520/testsuite/Makefile.in	2004-06-03 15:18:05.000000000 +0000
+@@ -105,9 +105,8 @@
+ 	reloc7.sh reloc8.sh reloc9.sh reloc10.sh reloc11.sh \
+ 	shuffle1.sh shuffle2.sh shuffle3.sh shuffle4.sh shuffle5.sh \
+ 	shuffle6.sh shuffle7.sh \
+-	layout1.sh layout2.sh tls1.sh tls2.sh tls3.sh tls4.sh tls5.sh tls6.sh \
+-	cxx1.sh quick1.sh cycle1.sh cycle2.sh deps1.sh deps2.sh \
+-	undosyslibs.sh
++	layout1.sh layout2.sh tls1.sh tls2.sh tls3.sh tls4.sh tls5.sh \
++	cxx1.sh cycle1.sh cycle2.sh deps1.sh deps2.sh 
+ 
+ TESTS_ENVIRONMENT = \
+ 	PRELINK="../src/prelink -c ./prelink.conf -C ./prelink.cache --ld-library-path=. --dynamic-linker=`echo ./ld*.so.*[0-9]`" \

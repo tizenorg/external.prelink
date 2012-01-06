@@ -1,0 +1,37 @@
+#! /bin/sh -e
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: Patch to solves a crash when sorting the cache file 
+
+[ -f debian/patches/00patch-opts ] && . debian/patches/00patch-opts
+patch_opts="${patch_opts:--f --no-backup-if-mismatch}"
+
+if [ $# -ne 1 ]; then
+    echo >&2 "`basename $0`: script expects -patch|-unpatch as argument"
+    exit 1
+fi
+case "$1" in
+       -patch) patch $patch_opts -p1 < $0;;
+       -unpatch) patch $patch_opts -p1 -R < $0;;
+        *)
+                echo >&2 "`basename $0`: script expects -patch|-unpatch as argument"
+                exit 1;;
+esac
+
+exit 0
+@DPATCH@
+
+diff -urN prelink-0.0.20060712.orig/src/cache.c prelink-0.0.20060712/src/cache.c
+--- prelink-0.0.20060712.orig/src/cache.c	2006-08-15 23:36:13.000000000 +0000
++++ prelink-0.0.20060712/src/cache.c	2006-08-15 23:36:34.000000000 +0000
+@@ -336,8 +336,8 @@
+   struct prelink_entry *a = * (struct prelink_entry **) A;
+   struct prelink_entry *b = * (struct prelink_entry **) B;
+ 
+-  if (a == NULL && b != NULL)
+-    return 1;
++  if (a == NULL)
++    return (b != NULL);
+   if (a != NULL && b == NULL)
+     return -1;
+ 
