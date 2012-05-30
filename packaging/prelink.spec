@@ -6,6 +6,7 @@ Group:      System/Base
 License:    GPLv2+
 Source0:    http://people.redhat.com/jakub/prelink/%{name}-%{version}.tar.gz
 Source1:    prelink.conf
+Source1001: packaging/prelink.manifest 
 Requires:   /bin/find
 Requires:   /bin/awk
 Requires:   /bin/grep
@@ -26,6 +27,7 @@ and thus programs come up faster.
 
 
 %build
+cp %{SOURCE1001} .
 %configure \
 	--disable-shared \
 	--disable-libtool-lock \
@@ -45,6 +47,7 @@ cp -af %{SOURCE1} %{buildroot}%{_sysconfdir}
 
 
 %files
+%manifest prelink.manifest
 %verify(not md5 size mtime) %config(noreplace) %{_sysconfdir}/prelink.conf
 %{_prefix}/sbin/prelink
 %{_prefix}/bin/execstack
