@@ -1,0 +1,20 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## arm.dynamic_linker.path.dpatch by Rafal Krypa <r.krypa@samsung.com>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: File name for dynamic linker on armel is ld-linux.so.3 and arm Debian
+## DP: port is now dropped.
+
+@DPATCH@
+diff -urNad '--exclude=CVS' '--exclude=.svn' '--exclude=.git' '--exclude=.arch' '--exclude=.hg' '--exclude=_darcs' '--exclude=.bzr' prelink~/src/arch-arm.c prelink/src/arch-arm.c
+--- prelink~/src/arch-arm.c	2011-04-13 13:28:03.000000000 +0200
++++ prelink/src/arch-arm.c	2011-04-13 13:28:54.000000000 +0200
+@@ -832,7 +832,7 @@
+   .R_COPY = R_ARM_COPY,
+   .R_RELATIVE = R_ARM_RELATIVE,
+   .rtype_class_valid = RTYPE_CLASS_VALID,
+-  .dynamic_linker = "/lib/ld-linux.so.2",
++  .dynamic_linker = "/lib/ld-linux.so.3",
+   .adjust_dyn = arm_adjust_dyn,
+   .adjust_rel = arm_adjust_rel,
+   .adjust_rela = arm_adjust_rela,
