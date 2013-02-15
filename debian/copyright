@@ -1,0 +1,23 @@
+It has be taken by Andrés Roldán <aroldan@debian.org>
+
+This package was debianized by Marco d'Itri <md@linux.it> on
+Thu,  2 Jan 2003 01:56:54 +0100.
+
+It was downloaded from:
+	ftp://people.redhat.com/jakub/prelink/
+	ftp://download.fedora.redhat.com/pub/fedora/linux/core/development/SRPMS/
+
+Upstream Author:
+	Jakub Jelinek <jakub@redhat.com>
+
+Copyright:
+  Copyright (C) 2001, 2002, 2003, 2004 Red Hat, Inc.
+  Written by Jakub Jelinek <jakub@redhat.com>, 2001.
+	
+License:
+  You are free to distribute this software under the terms of
+  the GNU General Public License, Version 2.
+
+  On Debian systems, the complete text of the GNU General Public
+  License can be found in /usr/share/common-licenses/GPL-2 file.
+	
