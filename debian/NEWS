@@ -1,0 +1,14 @@
+prelink (0.0.20030902-1) unstable; urgency=low
+
+  * Added /etc/cron.daily/prelink. When enabled in /etc/default/prelink,
+    this script will prelink the system every night.
+
+ -- Marco d'Itri <md@linux.it>  Thu, 11 Sep 2003 19:15:09 +0200
+
+prelink (0.0.20030902-5) unstable; urgency=low
+
+  * Removed TLS tests because glibc does not yet support this for the x86
+    architecture. See Bug #211610 for more information. 
+
+ -- Andrés Roldán <aroldan@fluidsignal.com>  Fri, 19 Sep 2003 16:54:45 +0000
+

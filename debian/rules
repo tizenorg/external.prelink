@@ -1,0 +1,96 @@
+#!/usr/bin/make -f
+# Sample debian/rules that uses debhelper.
+# GNU copyright 1997 to 1999 by Joey Hess.
+
+DISTRIBUTION := SLP
+SHELL+= -e
+
+include /usr/share/dpatch/dpatch.make
+
+#export DH_VERBOSE=1
+
+objdir := $(CURDIR)/obj
+D := $(CURDIR)/debian/prelink
+E := $(CURDIR)/debian/execstack
+
+configure: configure-stamp
+configure-stamp:
+	dh_testdir
+
+	mkdir -p $(objdir)
+	cd $(objdir) && ../configure \
+		--prefix=/ --mandir=/usr/share/man/ --disable-shared \
+		--disable-libtool-lock --disable-dependency-tracking
+
+	touch $@
+
+build: patch build-stamp
+build-stamp: configure-stamp 
+	dh_testdir
+
+	cd $(objdir) && $(MAKE)
+	
+	# Commented out until a stable test suite has been added
+	#@echo "====================TESTING========================="
+	#cd $(objdir) && $(MAKE) -C testsuite check-harder
+	#cd $(objdir) && $(MAKE) -C testsuite check-cycle
+	#@echo "====================TESTING END====================="
+
+	touch $@
+
+clean:  unpatch
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp configure-stamp
+
+	rm -rf $(objdir)
+
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+
+ifeq ($(DISTRIBUTION),SLP)
+	dh_installdirs etc/ usr/sbin/
+else
+	dh_installdirs etc/ etc/default/ usr/sbin/
+endif
+	cp $(objdir)/src/prelink $(objdir)/src/execstack $D/usr/sbin/
+ifneq ($(DISTRIBUTION),SLP)
+	mv $D/usr/sbin/prelink  $D/usr/sbin/prelink.bin
+	cp $(CURDIR)/debian/prelink.sh $D/usr/sbin/prelink
+endif
+	chmod 0755 $D/usr/sbin/prelink
+	cp debian/prelink.conf $D/etc/
+	dh_installdirs -pexecstack usr/sbin/
+	mv $D/usr/sbin/execstack $E/usr/sbin/
+
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs
+	( cat debian/prelink.spec || \
+		printf "\n%%changelog\nNo upstream changelog\n" ) | \
+	sed -e '1,/^%changelog$$/d' \
+		> $D/usr/share/doc/prelink/changelog
+	dh_installdocs TODO doc/prelink.pdf
+	dh_installman doc/prelink.8 debian/prelink.bin.8
+	dh_installman -pexecstack doc/execstack.8
+ifneq ($(DISTRIBUTION),SLP)
+	dh_installcron
+	cp debian/prelink.default $D/etc/default/prelink
+endif
+	dh_strip
+	dh_link
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_builddeb
+
+binary: binary-arch
+
+.PHONY: build clean binary-indep binary-arch binary install configure
