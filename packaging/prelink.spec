@@ -40,6 +40,9 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}%{_sysconfdir}
 cp -af %{SOURCE1} %{buildroot}%{_sysconfdir}
 
+mkdir -p %{buildroot}/usr/share/license
+cp COPYING %{buildroot}/usr/share/license/%{name}
+
 %remove_docs
 
 
@@ -48,5 +51,5 @@ cp -af %{SOURCE1} %{buildroot}%{_sysconfdir}
 %verify(not md5 size mtime) %config(noreplace) %{_sysconfdir}/prelink.conf
 %{_prefix}/sbin/prelink
 %{_prefix}/bin/execstack
-
+/usr/share/license/%{name}
 
