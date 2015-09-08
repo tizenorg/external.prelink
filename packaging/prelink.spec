@@ -1,7 +1,8 @@
+#sbs-git:slp/pkgs/p/prelink prelink 0.0.20100106 53be293a9c8dc4944a4194b79f7d627dd1056a04
 Name:       prelink
 Summary:    An ELF prelinking utility
-Version:    20100106
-Release:    0
+Version:    0.0.20100106
+Release:    1
 Group:      System/Base
 License:    GPLv2+
 Source0:    http://people.redhat.com/jakub/prelink/%{name}-%{version}.tar.gz
@@ -22,7 +23,7 @@ and thus programs come up faster.
 
 
 %prep
-%setup -q -n %{name}-%{version}
+%setup -q
 
 
 %build
