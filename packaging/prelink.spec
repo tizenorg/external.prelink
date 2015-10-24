@@ -1,53 +1,69 @@
-#sbs-git:slp/pkgs/p/prelink prelink 0.0.20100106 53be293a9c8dc4944a4194b79f7d627dd1056a04
-Name:       prelink
-Summary:    An ELF prelinking utility
-Version:    0.0.20100106
-Release:    1
-Group:      System/Base
-License:    GPLv2+
-Source0:    http://people.redhat.com/jakub/prelink/%{name}-%{version}.tar.gz
-Source1:    prelink.conf
-Requires:   /bin/find
-Requires:   /bin/awk
-Requires:   /bin/grep
-BuildRequires:  elfutils-libelf-devel-static
+Name:           prelink
+BuildRequires:  gcc-c++
 BuildRequires:  glibc-static
-
+BuildRequires:  elfutils-libelf-devel-static
+Summary:        An ELF Prelinking Utility
+License:        GPL-2.0+
+Group:          System/Base
+Version:        20130503
+Release:        0
+Url:            http://people.redhat.com/jakub/prelink/
+Source:         http://people.redhat.com/jakub/prelink/%name-%version.tar.bz2
+Source2:        %name.conf
+Source1001: 	prelink.manifest
 
 %description
-The prelink package contains a utility which modifies ELF shared libraries
-and executables, so that far fewer relocations need to be resolved at runtime
-and thus programs come up faster.
+The prelink program is a utility that modifies shared libraries and
+executables in the ELF format so that far less relocations need to be
+resolved at run time.  This decreases program start-up time.
 
-
-
+Be aware that prelink can modify all libraries and executables on your
+system. Applications which monitor changes in files or RPM itself
+will no longer work.
 
 %prep
-%setup -q
-
+%setup -q -n prelink
+cp %{SOURCE1001} .
 
 %build
-%configure \
-	--disable-shared \
-	--disable-libtool-lock \
-	--disable-dependency-tracking
+# This package failed when testing with -Wl,-as-needed being default.
+# So we disable it here, if you want to retest, just delete this comment and the line below.
+export LD_AS_NEEDED=0
+# Uninitialized memory in dynamic loader in ifunc3 test.
+export -n MALLOC_PERTURB_
+unset MALLOC_PERTURB_
 
+CFLAGS="$RPM_OPT_FLAGS" \
+%configure --prefix=/usr --mandir=%{_mandir} || cat config.log
 make %{?jobs:-j%jobs}
 
 %install
-rm -rf %{buildroot}
-%make_install
+make install DESTDIR=$RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT/etc
+sed -e "s,LIBDIR,%_lib," %{SOURCE2} > $RPM_BUILD_ROOT/etc/prelink.conf
+mkdir -p $FILLUP_DIR $RPM_BUILD_ROOT/sbin/conf.d
+install -m 0755 -d $RPM_BUILD_ROOT/var/lib/prelink
+mkdir -p $RPM_BUILD_ROOT/etc/rpm
+cat > $RPM_BUILD_ROOT/etc/rpm/macros.prelink <<EOF
+# rpm-4.1 verifies prelinked libraries using a prelink undo helper.
+#       Note: The 2nd token is used as argv[0] and "library" is a
+#       placeholder that will be deleted and replaced with the appropriate
+#       library file path.
+%__prelink_undo_cmd     /usr/sbin/prelink prelink -y library
+EOF
 
-mkdir -p %{buildroot}%{_sysconfdir}
-cp -af %{SOURCE1} %{buildroot}%{_sysconfdir}
 
-%remove_docs
-
-
+%docs_package
 
 %files
-%verify(not md5 size mtime) %config(noreplace) %{_sysconfdir}/prelink.conf
-%{_prefix}/sbin/prelink
-%{_prefix}/bin/execstack
+%manifest %{name}.manifest
+%license COPYING
+%defattr(-,root,root)
+%dir /var/lib/prelink
+%dir /etc/rpm
+%config(noreplace) /etc/prelink.conf
+%config /etc/rpm/macros.prelink
+%_sbindir/prelink
+%_bindir/execstack
 
-
+%changelog

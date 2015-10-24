@@ -1,5 +1,5 @@
-/* Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2009
-   Red Hat, Inc.
+/* Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2009, 2010, 2011,
+   2013 Red Hat, Inc.
    Written by Jakub Jelinek <jakub@redhat.com>, 2001.
 
    This program is free software; you can redistribute it and/or modify
@@ -100,6 +100,10 @@
 #ifndef R_PPC64_JMP_IREL
 #define R_PPC64_JMP_IREL	247
 #define R_PPC64_IRELATIVE	248
+#endif
+
+#ifndef R_390_IRELATIVE
+#define R_390_IRELATIVE		61
 #endif
 
 struct prelink_entry;
@@ -253,6 +257,7 @@ int adjust_dwarf2 (DSO *dso, int n, GElf_Addr start, GElf_Addr adjust);
 int adjust_mdebug (DSO *dso, int n, GElf_Addr start, GElf_Addr adjust);
 int finalize_mdebug (DSO *dso);
 int relocate_dso (DSO *dso, GElf_Addr base);
+int copy_fd_to_file (int fdin, const char *name, struct stat64 *st);
 int update_dso (DSO *dso, const char *);
 int prepare_write_dso (DSO *dso);
 int write_dso (DSO *dso);
@@ -494,6 +499,7 @@ int is_ldso_soname (const char *soname);
 int prelink_undo (DSO *dso);
 
 int prelink_verify (const char *filename);
+ssize_t send_file (int outfd, int infd, off_t *poff, size_t count);
 
 int gather_object (const char *dir, int deref, int onefs);
 int read_config (const char *config);
@@ -538,6 +544,6 @@ enum verify_method_t { VERIFY_CONTENT, VERIFY_MD5, VERIFY_SHA };
 extern enum verify_method_t verify_method;
 extern int quick;
 extern long long seed;
-extern GElf_Addr mmap_reg_start, mmap_reg_end;
+extern GElf_Addr mmap_reg_start, mmap_reg_end, layout_page_size;
 
 #endif /* PRELINK_H */

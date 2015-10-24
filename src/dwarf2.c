@@ -1,4 +1,5 @@
-/* Copyright (C) 2001, 2002, 2003, 2005, 2006, 2009 Red Hat, Inc.
+/* Copyright (C) 2001, 2002, 2003, 2005, 2006, 2009, 2010, 2011, 2012
+   Red Hat, Inc.
    Written by Jakub Jelinek <jakub@redhat.com>, 2001.
 
    This program is free software; you can redistribute it and/or modify
@@ -161,6 +162,8 @@ static struct
 #define DEBUG_STR	8
 #define DEBUG_FRAME	9
 #define DEBUG_RANGES	10
+#define DEBUG_TYPES	11
+#define DEBUG_MACRO	12
     { ".debug_info", NULL, 0, 0 },
     { ".debug_abbrev", NULL, 0, 0 },
     { ".debug_line", NULL, 0, 0 },
@@ -172,6 +175,8 @@ static struct
     { ".debug_str", NULL, 0, 0 },
     { ".debug_frame", NULL, 0, 0 },
     { ".debug_ranges", NULL, 0, 0 },
+    { ".debug_types", NULL, 0, 0 },
+    { ".debug_macro", NULL, 0, 0 },
     { NULL, NULL, 0 }
   };
 
@@ -271,7 +276,11 @@ no_memory:
 		goto no_memory;
 	    }
 	  form = read_uleb128 (ptr);
-	  if (form == 2 || form > DW_FORM_indirect)
+	  if (form == 2
+	      || (form > DW_FORM_flag_present
+		  && form != DW_FORM_ref_sig8
+		  && form != DW_FORM_GNU_ref_alt
+		  && form != DW_FORM_GNU_strp_alt))
 	    {
 	      error (0, 0, "%s: Unknown DWARF DW_FORM_%d", dso->filename, form);
 	      htab_delete (h);
@@ -295,8 +304,8 @@ no_memory:
 }
 
 static int
-adjust_location_list (DSO *dso, unsigned char *ptr, size_t len,
-		      GElf_Addr start, GElf_Addr adjust)
+adjust_location_list (DSO *dso, struct cu_data *cu, unsigned char *ptr,
+		      size_t len, GElf_Addr start, GElf_Addr adjust)
 {
   unsigned char *end = ptr + len;
   unsigned char op;
@@ -366,8 +375,20 @@ adjust_location_list (DSO *dso, unsigned char *ptr, size_t len,
 	case DW_OP_const4u:
 	case DW_OP_const4s:
 	case DW_OP_call4:
-	case DW_OP_call_ref:
+	case DW_OP_GNU_parameter_ref:
 	  ptr += 4;
+	  break;
+	case DW_OP_call_ref:
+	  if (cu == NULL)
+	    {
+	      error (0, 0, "%s: DWARF DW_OP_call_ref shouldn't appear"
+		     " in .debug_frame", dso->filename);
+	      return 1;
+	    }
+	  if (cu->cu_version == 2)
+	    ptr += ptr_size;
+	  else
+	    ptr += 4;
 	  break;
 	case DW_OP_const8u:
 	case DW_OP_const8s:
@@ -380,18 +401,56 @@ adjust_location_list (DSO *dso, unsigned char *ptr, size_t len,
 	case DW_OP_consts:
 	case DW_OP_breg0 ... DW_OP_breg31:
 	case DW_OP_fbreg:
+	case DW_OP_GNU_convert:
+	case DW_OP_GNU_reinterpret:
 	  read_uleb128 (ptr);
 	  break;
 	case DW_OP_bregx:
 	case DW_OP_bit_piece:
+	case DW_OP_GNU_regval_type:
 	  read_uleb128 (ptr);
 	  read_uleb128 (ptr);
 	  break;
 	case DW_OP_implicit_value:
 	  {
-	    uint32_t len = read_uleb128 (ptr);
-	    ptr += len;
+	    uint32_t leni = read_uleb128 (ptr);
+	    ptr += leni;
 	  }
+	  break;
+	case DW_OP_GNU_implicit_pointer:
+	  if (cu == NULL)
+	    {
+	      error (0, 0, "%s: DWARF DW_OP_GNU_implicit_pointer shouldn't"
+		     " appear in .debug_frame", dso->filename);
+	      return 1;
+	    }
+	  if (cu->cu_version == 2)
+	    ptr += ptr_size;
+	  else
+	    ptr += 4;
+	  read_uleb128 (ptr);
+	  break;
+        case DW_OP_GNU_entry_value:
+	  {
+	    uint32_t leni = read_uleb128 (ptr);
+	    if ((end - ptr) < leni)
+	      {
+		error (0, 0, "%s: DWARF DW_OP_GNU_entry_value with too large"
+		       " length", dso->filename);
+		return 1;
+	      }
+	    if (adjust_location_list (dso, cu, ptr, leni, start, adjust))
+	      return 1;
+	    ptr += leni;
+	  }
+	  break;
+        case DW_OP_GNU_const_type:
+	  read_uleb128 (ptr);
+	  ptr += *ptr + 1;
+	  break;
+	case DW_OP_GNU_deref_type:
+	  ++ptr;
+	  read_uleb128 (ptr);
 	  break;
 	default:
 	  error (0, 0, "%s: Unknown DWARF DW_OP_%d", dso->filename, op);
@@ -461,8 +520,8 @@ adjust_dwarf2_ranges (DSO *dso, GElf_Addr offset, GElf_Addr base,
 }
 
 static int
-adjust_dwarf2_loc (DSO *dso, GElf_Addr offset, GElf_Addr base,
-		   GElf_Addr start, GElf_Addr adjust)
+adjust_dwarf2_loc (DSO *dso, struct cu_data *cu, GElf_Addr offset,
+		   GElf_Addr base, GElf_Addr start, GElf_Addr adjust)
 {
   unsigned char *ptr, *endsec;
   GElf_Addr low, high;
@@ -505,7 +564,7 @@ adjust_dwarf2_loc (DSO *dso, GElf_Addr offset, GElf_Addr base,
       len = read_16 (ptr);
       assert (ptr + len <= endsec);
 
-      if (adjust_location_list (dso, ptr, len, start, adjust))
+      if (adjust_location_list (dso, cu, ptr, len, start, adjust))
 	return 1;
 
       ptr += len;
@@ -533,16 +592,23 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 	{
 	  switch (t->attr[i].attr)
 	    {
+	    case DW_AT_data_member_location:
+	      /* In DWARF4+ DW_AT_data_member_location
+		 with DW_FORM_data[48] is just very high
+		 constant, rather than loclistptr.  */
+	      if (cu->cu_version >= 4 && form != DW_FORM_sec_offset)
+		break;
+	      /* FALLTHRU */
 	    case DW_AT_location:
 	    case DW_AT_string_length:
 	    case DW_AT_return_addr:
-	    case DW_AT_data_member_location:
 	    case DW_AT_frame_base:
+	    case DW_AT_segment:
 	    case DW_AT_static_link:
 	    case DW_AT_use_location:
 	    case DW_AT_vtable_elem_location:
 	    case DW_AT_ranges:
-	      if (form == DW_FORM_data4)
+	      if (form == DW_FORM_data4 || form == DW_FORM_sec_offset)
 		addr = read_32 (ptr), ptr -= 4;
 	      else if (form == DW_FORM_data8)
 		addr = read_64 (ptr), ptr -= 8;
@@ -564,7 +630,7 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 		  }
 		else
 		  {
-		    if (adjust_dwarf2_loc (dso, addr, base, start, adjust))
+		    if (adjust_dwarf2_loc (dso, cu, addr, base, start, adjust))
 		      return NULL;
 		  }
 	      }
@@ -587,6 +653,8 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 	      if (addr >= start && addr_to_sec (dso, addr) != -1)
 		write_ptr (ptr - ptr_size, addr + adjust);
 	      break;
+	    case DW_FORM_flag_present:
+	      break;
 	    case DW_FORM_ref1:
 	    case DW_FORM_flag:
 	    case DW_FORM_data1:
@@ -597,11 +665,14 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 	      ptr += 2;
 	      break;
 	    case DW_FORM_ref4:
+	    case DW_FORM_GNU_ref_alt:
 	    case DW_FORM_data4:
+	    case DW_FORM_sec_offset:
 	      ptr += 4;
 	      break;
 	    case DW_FORM_ref8:
 	    case DW_FORM_data8:
+	    case DW_FORM_ref_sig8:
 	      ptr += 8;
 	      break;
 	    case DW_FORM_sdata:
@@ -616,6 +687,7 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 		ptr += 4;
 	      break;
 	    case DW_FORM_strp:
+	    case DW_FORM_GNU_strp_alt:
 	      ptr += 4;
 	      break;
 	    case DW_FORM_string:
@@ -640,6 +712,10 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 	      form = DW_FORM_block1;
 	      assert (len < UINT_MAX);
 	      break;
+	    case DW_FORM_exprloc:
+	      len = read_uleb128 (ptr);
+	      assert (len < UINT_MAX);
+	      break;
 	    default:
 	      error (0, 0, "%s: Unknown DWARF DW_FORM_%d", dso->filename,
 		     form);
@@ -654,11 +730,31 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 		case DW_AT_location:
 		case DW_AT_data_member_location:
 		case DW_AT_vtable_elem_location:
-		  if (adjust_location_list (dso, ptr, len, start, adjust))
+		case DW_AT_byte_size:
+		case DW_AT_bit_offset:
+		case DW_AT_bit_size:
+		case DW_AT_string_length:
+		case DW_AT_lower_bound:
+		case DW_AT_return_addr:
+		case DW_AT_bit_stride:
+		case DW_AT_upper_bound:
+		case DW_AT_count:
+		case DW_AT_segment:
+		case DW_AT_static_link:
+		case DW_AT_use_location:
+		case DW_AT_allocated:
+		case DW_AT_associated:
+		case DW_AT_data_location:
+		case DW_AT_byte_stride:
+		case DW_AT_GNU_call_site_value:
+		case DW_AT_GNU_call_site_data_value:
+		case DW_AT_GNU_call_site_target:
+		case DW_AT_GNU_call_site_target_clobbered:
+		  if (adjust_location_list (dso, cu, ptr, len, start, adjust))
 		    return NULL;
 		  break;
 		default:
-		  if (t->attr[i].attr <= DW_AT_call_line
+		  if (t->attr[i].attr <= DW_AT_linkage_name
 		      || (t->attr[i].attr >= DW_AT_MIPS_fde
 			  && t->attr[i].attr <= DW_AT_MIPS_has_inlines)
 		      || (t->attr[i].attr >= DW_AT_sf_names
@@ -668,6 +764,12 @@ adjust_attributes (DSO *dso, unsigned char *ptr, struct abbrev_tag *t,
 			 dso->filename, t->attr[i].attr);
 		  return NULL;
 		}
+	      ptr += len;
+	    }
+	  else if (form == DW_FORM_exprloc)
+	    {
+	      if (adjust_location_list (dso, cu, ptr, len, start, adjust))
+		return NULL;
 	      ptr += len;
 	    }
 
@@ -707,7 +809,7 @@ adjust_dwarf2_line (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 	}
 
       value = read_16 (ptr);
-      if (value != 2 && value != 3)
+      if (value != 2 && value != 3 && value != 4)
 	{
 	  error (0, 0, "%s: DWARF version %d unhandled", dso->filename,
 		 value);
@@ -723,8 +825,8 @@ adjust_dwarf2_line (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 	  return 1;
 	}
 
-      opcode_base = ptr[4];
-      opcode_lengths = ptr + 4;
+      opcode_base = ptr[4 + (value >= 4)];
+      opcode_lengths = ptr + 4 + (value >= 4);
 
       ptr = endprol;
       while (ptr < endcu)
@@ -732,7 +834,7 @@ adjust_dwarf2_line (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 	  op = *ptr++;
 	  if (op >= opcode_base)
 	    continue;
-	  if (op == 0)
+	  if (op == DW_LNS_extended_op)
 	    {
 	      unsigned int len = read_uleb128 (ptr);
 
@@ -747,6 +849,7 @@ adjust_dwarf2_line (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 		  break;
 		case DW_LNE_end_sequence:
 		case DW_LNE_define_file:
+		case DW_LNE_set_discriminator:
 		default:
 		  ptr += len - 1;
 		  break;
@@ -856,7 +959,7 @@ adjust_dwarf2_frame (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 	{
 	  /* CIE.  */
 	  uint32_t version = *ptr++;
-	  if (version != 1 && version != 3)
+	  if (version != 1 && version != 3 && version != 4)
 	    {
 	      error (0, 0, "%s: unhandled .debug_frame version %d",
 		     dso->filename, version);
@@ -869,6 +972,22 @@ adjust_dwarf2_frame (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 	      return 1;
 	    }
 	  ptr++;  /* Skip augmentation.  */
+	  if (version >= 4)
+	    {
+	      if (ptr[0] != ptr_size)
+		{
+		  error (0, 0, "%s: .debug_frame unhandled pointer size %d",
+			  dso->filename, ptr[0]);
+		  return 1;
+		}
+	      if (ptr[1] != 0)
+		{
+		  error (0, 0, "%s: .debug_frame unhandled non-zero segment size",
+			 dso->filename);
+		  return 1;
+		}
+	      ptr += 2;
+	    }
 	  read_uleb128 (ptr);  /* Skip code_alignment factor.  */
 	  read_uleb128 (ptr);  /* Skip data_alignment factor.  */
 	  if (version >= 3)
@@ -942,7 +1061,7 @@ adjust_dwarf2_frame (DSO *dso, GElf_Addr start, GElf_Addr adjust)
 	      /* FALLTHROUGH */
 	    case DW_CFA_def_cfa_expression:
 	      len = read_uleb128 (ptr);
-	      if (adjust_location_list (dso, ptr, len, start, adjust))
+	      if (adjust_location_list (dso, NULL, ptr, len, start, adjust))
 		return 1;
 	      ptr += len;
 	      break;
@@ -959,13 +1078,132 @@ adjust_dwarf2_frame (DSO *dso, GElf_Addr start, GElf_Addr adjust)
   return 0;
 }
 
+static int
+adjust_dwarf2_info (DSO *dso, GElf_Addr start, GElf_Addr adjust, int type)
+{
+  unsigned char *ptr, *endcu, *endsec;
+  uint32_t value;
+  htab_t abbrev;
+  struct abbrev_tag tag, *t;
+  struct cu_data cu;
+
+  memset (&cu, 0, sizeof(cu));
+  ptr = debug_sections[type].data;
+  endsec = ptr + debug_sections[type].size;
+  while (ptr < endsec)
+    {
+      if (ptr + 11 > endsec)
+	{
+	  error (0, 0, "%s: .debug_info CU header too small", dso->filename);
+	  return 1;
+	}
+
+      endcu = ptr + 4;
+      endcu += read_32 (ptr);
+      if (endcu == ptr + 0xffffffff)
+	{
+	  error (0, 0, "%s: 64-bit DWARF not supported", dso->filename);
+	  return 1;
+	}
+
+      if (endcu > endsec)
+	{
+	  error (0, 0, "%s: .debug_info too small", dso->filename);
+	  return 1;
+	}
+
+      value = read_16 (ptr);
+      if (value != 2 && value != 3 && value != 4)
+	{
+	  error (0, 0, "%s: DWARF version %d unhandled", dso->filename, value);
+	  return 1;
+	}
+      cu.cu_version = value;
+
+      value = read_32 (ptr);
+      if (value >= debug_sections[DEBUG_ABBREV].size)
+	{
+	  if (debug_sections[DEBUG_ABBREV].data == NULL)
+	    error (0, 0, "%s: .debug_abbrev not present", dso->filename);
+	  else
+	    error (0, 0, "%s: DWARF CU abbrev offset too large",
+		   dso->filename);
+	  return 1;
+	}
+
+      if (ptr_size == 0)
+	{
+	  ptr_size = read_1 (ptr);
+	  if (ptr_size == 4)
+	    {
+	      do_read_ptr = do_read_32_64;
+	      write_ptr = write_32;
+	    }
+	  else if (ptr_size == 8)
+	    {
+	      do_read_ptr = do_read_64;
+	      write_ptr = write_64;
+	    }
+	  else
+	    {
+	      error (0, 0, "%s: Invalid DWARF pointer size %d",
+		     dso->filename, ptr_size);
+	      return 1;
+	    }
+	}
+      else if (read_1 (ptr) != ptr_size)
+	{
+	  error (0, 0, "%s: DWARF pointer size differs between CUs",
+		 dso->filename);
+	  return 1;
+	}
+
+      abbrev = read_abbrev (dso, debug_sections[DEBUG_ABBREV].data + value);
+      if (abbrev == NULL)
+	return 1;
+
+      cu.cu_entry_pc = ~ (GElf_Addr) 0;
+      cu.cu_low_pc = ~ (GElf_Addr) 0;
+
+      if (type == DEBUG_TYPES)
+	{
+	  ptr += 8; /* Skip type_signature.  */
+	  ptr += 4; /* Skip type_offset.  */
+	}
+
+      while (ptr < endcu)
+	{
+	  tag.entry = read_uleb128 (ptr);
+	  if (tag.entry == 0)
+	    continue;
+	  t = htab_find_with_hash (abbrev, &tag, tag.entry);
+	  if (t == NULL)
+	    {
+	      error (0, 0, "%s: Could not find DWARF abbreviation %d",
+		     dso->filename, tag.entry);
+	      htab_delete (abbrev);
+	      return 1;
+	    }
+
+	  ptr = adjust_attributes (dso, ptr, t, &cu, start, adjust);
+	  if (ptr == NULL)
+	    {
+	      htab_delete (abbrev);
+	      return 1;
+	    }
+	}
+
+      htab_delete (abbrev);
+    }
+  return 0;
+}
+
 int
 adjust_dwarf2 (DSO *dso, int n, GElf_Addr start, GElf_Addr adjust)
 {
   Elf_Data *data;
   Elf_Scn *scn;
   int i, j;
-  struct cu_data cu;
 
   for (i = 0; debug_sections[i].name; ++i)
     {
@@ -975,7 +1213,6 @@ adjust_dwarf2 (DSO *dso, int n, GElf_Addr start, GElf_Addr adjust)
     }
   ptr_size = 0;
 
-  memset (&cu, 0, sizeof(cu));
   for (i = 1; i < dso->ehdr.e_shnum; ++i)
     if (! (dso->shdr[i].sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR))
 	&& dso->shdr[i].sh_size)
@@ -1011,6 +1248,7 @@ adjust_dwarf2 (DSO *dso, int n, GElf_Addr start, GElf_Addr adjust)
 	      {
 		error (0, 0, "%s: Unknown debugging section %s",
 		       dso->filename, name);
+		return 1;
 	      }
 	  }
       }
@@ -1039,118 +1277,13 @@ adjust_dwarf2 (DSO *dso, int n, GElf_Addr start, GElf_Addr adjust)
       return 1;
     }
 
-  if (debug_sections[DEBUG_INFO].data != NULL)
-    {
-      unsigned char *ptr, *endcu, *endsec;
-      uint32_t value;
-      htab_t abbrev;
-      struct abbrev_tag tag, *t;
+  if (debug_sections[DEBUG_INFO].data != NULL
+      && adjust_dwarf2_info (dso, start, adjust, DEBUG_INFO))
+    return 1;
 
-      ptr = debug_sections[DEBUG_INFO].data;
-      endsec = ptr + debug_sections[DEBUG_INFO].size;
-      while (ptr < endsec)
-	{
-	  if (ptr + 11 > endsec)
-	    {
-	      error (0, 0, "%s: .debug_info CU header too small",
-		     dso->filename);
-	      return 1;
-	    }
-
-	  endcu = ptr + 4;
-	  endcu += read_32 (ptr);
-	  if (endcu == ptr + 0xffffffff)
-	    {
-	      error (0, 0, "%s: 64-bit DWARF not supported", dso->filename);
-	      return 1;
-	    }
-
-	  if (endcu > endsec)
-	    {
-	      error (0, 0, "%s: .debug_info too small", dso->filename);
-	      return 1;
-	    }
-
-	  value = read_16 (ptr);
-	  if (value != 2 && value != 3)
-	    {
-	      error (0, 0, "%s: DWARF version %d unhandled", dso->filename,
-		     value);
-	      return 1;
-	    }
-	  cu.cu_version = value;
-
-	  value = read_32 (ptr);
-	  if (value >= debug_sections[DEBUG_ABBREV].size)
-	    {
-	      if (debug_sections[DEBUG_ABBREV].data == NULL)
-		error (0, 0, "%s: .debug_abbrev not present", dso->filename);
-	      else
-		error (0, 0, "%s: DWARF CU abbrev offset too large",
-		       dso->filename);
-	      return 1;
-	    }
-
-	  if (ptr_size == 0)
-	    {
-	      ptr_size = read_1 (ptr);
-	      if (ptr_size == 4)
-		{
-		  do_read_ptr = do_read_32_64;
-		  write_ptr = write_32;
-		}
-	      else if (ptr_size == 8)
-		{
-		  do_read_ptr = do_read_64;
-		  write_ptr = write_64;
-		}
-	      else
-		{
-		  error (0, 0, "%s: Invalid DWARF pointer size %d",
-			 dso->filename, ptr_size);
-		  return 1;
-		}
-	    }
-	  else if (read_1 (ptr) != ptr_size)
-	    {
-	      error (0, 0, "%s: DWARF pointer size differs between CUs",
-		     dso->filename);
-	      return 1;
-	    }
-
-	  abbrev = read_abbrev (dso,
-				debug_sections[DEBUG_ABBREV].data + value);
-	  if (abbrev == NULL)
-	    return 1;
-
-	  cu.cu_entry_pc = ~ (GElf_Addr) 0;
-	  cu.cu_low_pc = ~ (GElf_Addr) 0;
-
-	  while (ptr < endcu)
-	    {
-	      tag.entry = read_uleb128 (ptr);
-	      if (tag.entry == 0)
-		continue;
-	      t = htab_find_with_hash (abbrev, &tag, tag.entry);
-	      if (t == NULL)
-		{
-		  error (0, 0, "%s: Could not find DWARF abbreviation %d",
-			 dso->filename, tag.entry);
-		  htab_delete (abbrev);
-		  return 1;
-		}
-
-	      ptr = adjust_attributes (dso, ptr, t, &cu, start, adjust);
-	      if (ptr == NULL)
-		{
-		  htab_delete (abbrev);
-		  return 1;
-		}
-	    }
-
-	  htab_delete (abbrev);
-	}
-    }
+  if (debug_sections[DEBUG_TYPES].data != NULL
+      && adjust_dwarf2_info (dso, start, adjust, DEBUG_TYPES))
+    return 1;
 
   if (ptr_size == 0)
     /* Should not happen.  */

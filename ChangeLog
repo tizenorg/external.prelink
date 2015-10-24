@@ -1,3 +1,260 @@
+2013-05-03  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/cache.c (prelink_save_cache_check): For ET_CACHE_DYN
+	or ET_UNPRELINKABLE dependencies, call prelink_save_cache_check
+	recursively.
+	* testsuite/Makefile.am (TESTS): Add unprel1.sh.
+	* testsuite/Makefile.in: Regenerated.
+	* testsuite/unprel1.sh: New test.
+	* testsuite/unprel1.c: New file.
+	* testsuite/unprel1lib1.c: New file.
+	* testsuite/unprel1lib2.c: New file.
+
+	* src/prelink.h (R_390_IRELATIVE): Define if not defined.
+
+2013-04-25  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/arch-s390.c (s390_adjust_rela, s390_prelink_rela,
+	s390_apply_conflict_rela, s390_prelink_conflict_rela,
+	s390_undo_prelink_rela): Handle R_390_IRELATIVE.
+	* src/arch-s390x.c (s390x_adjust_rela, s390x_prelink_rela,
+	s390x_apply_conflict_rela, s390x_prelink_conflict_rela,
+	s390x_undo_prelink_rela, s390x_reloc_size): Likewise.
+
+2013-04-18  Jakub Jelinek  <jakub@redhat.com>
+
+	* testsuite/reloc4.sh: Add libraries to link lines to make
+	testsuite work both with --no-add-needed and with --add-needed,
+	including latest ld.bfd.
+	* testsuite/reloc5.sh: Likewise.
+	* testsuite/reloc8.sh: Likewise.
+	* testsuite/reloc9.sh: Likewise.
+
+2013-04-17  Jakub Jelinek  <jakub@redhat.com>
+
+	* testsuite/ifunc.h (IFUNC_DECL): Fix up .size on ppc64.
+	* testsuite/cxx1.sh: Add libraries to link lines to make
+	testsuite work both with --no-add-needed and with --add-needed,
+	including latest ld.bfd.
+	* testsuite/cxx2.sh: Likewise.
+	* testsuite/cxx3.sh: Likewise.
+	* testsuite/deps1.sh: Likewise.
+	* testsuite/deps2.sh: Likewise.
+	* testsuite/ifunc1.sh: Likewise.
+	* testsuite/ifunc2.sh: Likewise.
+	* testsuite/ifunc3.sh: Likewise.
+	* testsuite/quick1.sh: Likewise.
+	* testsuite/quick2.sh: Likewise.
+	* testsuite/quick3.sh: Likewise.
+	* testsuite/reloc1.sh: Likewise.
+	* testsuite/reloc10.sh: Likewise.
+	* testsuite/reloc11.sh: Likewise.
+	* testsuite/reloc3.sh: Likewise.
+	* testsuite/reloc6.sh: Likewise.
+	* testsuite/reloc7.sh: Likewise.
+	* testsuite/shuffle1.sh: Likewise.
+	* testsuite/shuffle2.sh: Likewise.
+	* testsuite/shuffle3.sh: Likewise.
+	* testsuite/shuffle4.sh: Likewise.
+	* testsuite/shuffle5.sh: Likewise.
+	* testsuite/shuffle6.sh: Likewise.
+	* testsuite/shuffle7.sh: Likewise.
+	* testsuite/shuffle8.sh: Likewise.
+	* testsuite/shuffle9.sh: Likewise.
+	* testsuite/tls1.sh: Likewise.
+	* testsuite/tls2.sh: Likewise.
+	* testsuite/tls3.sh: Likewise.
+	* testsuite/tls4.sh: Likewise.
+	* testsuite/tls5.sh: Likewise.
+	* testsuite/tls6.sh: Likewise.
+	* testsuite/undo1.sh: Likewise.
+
+2012-06-28  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/get.c (is_ldso_soname): Add arm dynamic linker SONAMEs.
+
+	* src/dwarf2.h (DW_FORM_GNU_ref_alt,
+	DW_FORM_GNU_strp_alt): Define.
+	* src/dwarf2.c (read_abbrev): Allow those forms.
+	(adjust_attributes): Handle them.
+
+2012-04-10  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dwarf2.c (DEBUG_MACRO): Define.
+	(debug_sections): Add .debug_macro entry.
+
+2012-04-02  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dwarf2.c (adjust_attributes): For DWARF4+ treat
+	DW_AT_data_member_location with DW_FORM_data[48] as
+	large constant instead of loclistptr.
+
+2011-10-12  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/main.c (layout_page_size): New variable.
+	(OPT_LAYOUT_PAGE_SIZE): Define.
+	(options): Add --layout-page-size option.
+	(set_default_layout_page_size): New function in i?86/x86_64
+	resp. empty macro on other architectures.
+	(main): Call it.
+	* src/arch-i386.c (i386_layout_libs_init): Fail if
+	l->max_page_size is larger than 2MB and exec_shield is true.
+	Compute reg0s as REG0S rounded up to l->max_page_size
+	boundary and use it instead of REG0S.
+	(i386_layout_libs_pre): Compute reg0s as REG0S rounded up to
+	l->max_page_size boundary and use it instead of REG0S.
+	Fix up a pasto in computation of virt parameter for
+	third i386_find_free_addr call.
+	* src/prelink.h (layout_page_size): New decl.
+	* src/layout.c (layout_libs): Set max_page_size and
+	l.max_page_size to maximum of plarch->max_page_size
+	and layout_page_size.  Fail if mmap_base or mmap_end
+	aren't max_page_size aligned.
+	* src/arch-ppc.c (ppc_layout_libs_pre): Give up if
+	l->max_page_size is larger than 64KB.
+
+2011-08-26  Jakub Jelinek  <jakub@redhat.com>
+
+	* testsuite/cxx3.sh: Expect fewer conflicts.
+
+	* src/arch-arm.c (PL_ARCH): Change .dynamic_linker to
+	/lib/ld-linux.so.3.
+
+2011-08-25  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/gather.c (gather_func): When looking for PT_PHDR header,
+	skip any PT_LOPROC ... PR_HIPROC phdrs.
+
+	* testsuite/cxx1.sh: Don't check for any "Removing C++ conflict"
+	messages on arm.
+	* testsuite/cxx2.sh: Likewise.
+	* testsuite/cxx3.sh: New test.
+	* testsuite/cxx3.C: New file.
+	* testsuite/cxx3.h: New file.
+	* testsuite/cxx3lib1.C: New file.
+	* testsuite/cxx3lib2.C: New file.
+	* testsuite/Makefile.am (TESTS): Add cxx3.sh.
+	* testsuite/Makefile.in: Regenerated.
+
+2011-08-25  William Cohen  <wcohen@redhat.com>
+
+	* testsuite/shuffle2.c: Use %nobits instead of @nobits
+	to be arm assembler friendly.
+	* testsuite/shuffle9.c: Likewise.
+	* testsuite/reloc5.c (main): Likewise.
+
+2011-06-22  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dwarf2.h (DW_OP_GNU_parameter_ref): Define.
+	* src/dwarf2.c (adjust_location_list): Handle
+	DW_OP_GNU_parameter_ref.
+
+2011-05-11  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dwarf2.h (DW_OP_GNU_const_type, DW_OP_GNU_regval_type,
+	DW_OP_GNU_deref_type, DW_OP_GNU_convert, DW_OP_GNU_reinterpret):
+	Define.
+	* src/dwarf2.c (adjust_location_list): Handle DW_OP_GNU_const_type,
+	DW_OP_GNU_retval_type, DW_OP_GNU_defer_type, DW_OP_GNU_convert and
+	DW_OP_GNU_reinterpret.
+
+2011-04-01  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dwarf2.h (DW_TAG_GNU_template_template_param,
+	DW_TAG_GNU_template_parameter_pack, DW_TAG_GNU_formal_parameter_pack,
+	DW_TAG_GNU_call_site, DW_TAG_GNU_call_site_parameter,
+	DW_AT_GNU_vector, DW_AT_GNU_guarded_by, DW_AT_GNU_pt_guarded_by,
+	DW_AT_GNU_guarded, DW_AT_GNU_pt_guarded, DW_AT_GNU_locks_excluded,
+	DW_AT_GNU_exclusive_locks_required, DW_AT_GNU_shared_locks_required,
+	DW_AT_GNU_odr_signature, DW_AT_GNU_template_name,
+	DW_AT_GNU_call_site_value, DW_AT_GNU_call_site_data_value,
+	DW_AT_GNU_call_site_target, DW_AT_GNU_call_site_target_clobbered,
+	DW_AT_GNU_tail_call, DW_AT_GNU_all_tail_call_sites,
+	DW_AT_GNU_all_call_sites, DW_AT_GNU_all_source_call_sites,
+	DW_OP_GNU_entry_value): Define.
+	* src/dwarf2.c (adjust_location_list): Handle DW_OP_GNU_entry_value.
+	(adjust_attributes): Handle DW_AT_GNU_call_site_value,
+	DW_AT_GNU_call_site_data_value, DW_AT_GNU_call_site_target and
+	DW_AT_GNU_call_site_target_clobbered.
+
+2010-11-23  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dwarf2.h (DW_OP_GNU_implicit_pointer): Define.
+	* src/dwarf2.c (adjust_location_list): Add CU argument, fix
+	handling of DW_OP_call_ref, handle DW_OP_GNU_implicit_pointer.
+	(adjust_dwarf2_loc): Add CU argument, adjust adjust_location_list
+	caller.
+	(adjust_attributes): Adjust adjust_location_list and
+	adjust_dwarf2_loc callers.
+	(adjust_dwarf2_frame): Likewise.
+
+2010-11-22  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/dso.c: Include sys/xattr.h.
+	(copy_xattrs): New function.
+	(set_security_context): Call it.
+
+2010-07-14  Jakub Jelinek  <jakub@redhat.com>
+
+	* src/prelink.h (copy_fd_to_file): New prototype.
+	* src/undo.c (prelink_undo): If undo_output and .gnu.prelink_undo
+	section is not present, don't reopen_dso, just return 0.
+	* src/main.c (main): If dso isn't writable with undo_output,
+	copy_fd_to_file dso->fd.
+	* src/dso.c (copy_fd_to_file): New function.
+	(update_dso): Use it.
+
+2010-04-13  Jakub Jelinek  <jakub@redhat.com>
+
+	* testsuite/reloc8.sh: Don't use -Wl,-z,nocopyreloc on
+	sparc64.
+	* testsuite/reloc9.sh: Likewise.
+
+	* src/dwarf2.c (DEBUG_TYPES): Define.
+	(debug_sections): Add .debug_types entry.
+	(read_abbrev): Handle new DWARF4 forms.
+	(adjust_attributes): DW_AT_segment can be a loclistptr.
+	DW_AT_byte_size, DW_AT_bit_offset, DW_AT_bit_size,
+	DW_AT_string_length, DW_AT_lower_bound, DW_AT_return_addr,
+	DW_AT_bit_stride, DW_AT_upper_bound, DW_AT_count,
+	DW_AT_segment, DW_AT_static_link, DW_AT_use_location,
+	DW_AT_allocated, DW_AT_associated, DW_AT_data_location
+	and DW_AT_byte_stride can be exprloc.  Handle new DWARF4 forms.
+	(adjust_dwarf2_line): Handle adjusting DWARF4 .debug_line
+	sections.
+	(adjust_dwarf2_frame): Handle adjusting DWARF4 .debug_frame
+	section.
+	(adjust_dwarf2_info): New function, moved from adjust_dwarf2.
+	Handle DWARF4 .debug_info and handle .debug_types too.
+	(adjust_dwarf2): Call it for .debug_info and .debug_types
+	sections.
+	* src/dwarf2.h (DW_TAG_type_unit, DW_TAG_rvalue_reference_type,
+	DW_TAG_template_alias, DW_FORM_sec_offset, DW_FORM_exprloc,
+	DW_FORM_flag_present, DW_FORM_ref_sig8, DW_AT_bit_stride,
+	DW_AT_byte_stride, DW_AT_description, DW_AT_binary_scale,
+	DW_AT_decimal_scale, DW_AT_small, DW_AT_decimal_sign,
+	DW_AT_digit_count, DW_AT_picture_string, DW_AT_mutable,
+	DW_AT_threads_scaled, DW_AT_explicit, DW_AT_object_pointer,
+	DW_AT_endianity, DW_AT_elemental, DW_AT_pure, DW_AT_recursive,
+	DW_AT_signature, DW_AT_main_subprogram, DW_AT_data_bit_offset,
+	DW_AT_const_expr, DW_AT_enum_class, DW_AT_linkage_name,
+	DW_LNS_set_prologue_end, DW_LNS_set_epilogue_begin,
+	DW_LNS_set_isa, DW_LNE_set_discriminator, DW_LANG_Python): Define.
+
+	* src/prelink.h (send_file): New prototype.
+	* src/execstack.c (send_file): New dummy function.
+	* src/verify.c (send_file): No longer static.  Don't loop forever
+	if write or read return 0.
+	* src/undo.c (prelink_undo): If undo_output is -, use /tmp/undo
+	instead of - as temp file prefix.
+	* src/dso.c (set_security_context): Drop unused dso argument, add
+	ignore_errors argument.  If it is non-zero, don't error if
+	setfilecon failed.
+	(update_dso): If orig_name is non-NULL, don't error if fchown or
+	fchmod fails.  If rename fails or name1 is - and orig_name is
+	non-NULL, copy the temporary file to name1 (or to stdout if
+	name1 is -) instead of failing.
+
 2010-01-06  Jakub Jelinek  <jakub@redhat.com>
 
 	* src/arch-s390.c (s390_prelink_conflict_rela) <case R_390_PC32DBL>:

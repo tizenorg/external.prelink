@@ -1,4 +1,4 @@
-/* Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006 Red Hat, Inc.
+/* Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2010 Red Hat, Inc.
    Written by Jakub Jelinek <jakub@redhat.com>, 2001.
 
    This program is free software; you can redistribute it and/or modify
@@ -32,6 +32,8 @@
 #include <selinux/selinux.h>
 #define USE_SELINUX
 #endif
+
+#include <sys/xattr.h>
 
 #define RELOCATE_SCN(shf) \
   ((shf) & (SHF_WRITE | SHF_ALLOC | SHF_EXECINSTR))
@@ -212,8 +214,11 @@ check_dso (DSO *dso)
 	      || RELOCATE_SCN (dso->shdr[last].sh_flags)
 	      || RELOCATE_SCN (dso->shdr[i].sh_flags))
 	    {
-	      error (0, 0, "%s: section file offsets not monotonically increasing",
-		     dso->filename);
+	      error (0, 0, "%s: section file offsets not monotonically increasing (%s before %s)",
+                     dso->filename,
+                     strptr (dso, dso->ehdr.e_shstrndx, dso->shdr[i-1].sh_name),
+                     strptr (dso, dso->ehdr.e_shstrndx, dso->shdr[i].sh_name));
+
 	      return 1;
 	    }
 	}
@@ -1694,8 +1699,92 @@ write_dso (DSO *dso)
   return 0;
 }
 
-int
-set_security_context (DSO *dso, const char *temp_name, const char *name)
+static int
+copy_xattrs (const char *temp_name, const char *name, int ignore_errors)
+{
+  ssize_t sz = listxattr (name, NULL, 0), valsz = 0;
+  char *list = NULL, *end, *p, *val = NULL, *newval;
+
+  if (sz < 0)
+    {
+      if (errno == ENOSYS || errno == ENOTSUP)
+	return 0;
+      goto read_err;
+    }
+  list = malloc (sz + 1);
+  if (list == NULL)
+    goto read_err;
+  sz = listxattr (name, list, sz);
+  if (sz < 0)
+    goto read_err;
+  end = list + sz;
+  *end = '\0';
+  for (p = list; p != end; p = strchr (p, '\0') + 1)
+    if (*p == '\0' || strcmp (p, "security.selinux") == 0)
+      continue;
+    else
+      {
+	sz = getxattr (name, p, val, valsz);
+	if (sz < 0)
+	  {
+	    if (errno != ERANGE)
+	      goto read_err;
+	    sz = getxattr (name, p, NULL, 0);
+	    if (sz < 0)
+	      goto read_err;
+	  }
+	if (sz > valsz)
+	  {
+	    valsz = sz * 2;
+	    if (valsz < 64)
+	      valsz = 64;
+	    newval = realloc (val, valsz);
+	    if (newval == NULL)
+	      goto read_err;
+	    val = newval;
+	    sz = getxattr (name, p, val, valsz);
+	    if (sz < 0)
+	      goto read_err;
+	  }
+	if (setxattr (temp_name, p, val, sz, 0) < 0)
+	  {
+	    if (errno == ENOSYS || errno == ENOTSUP)
+	      continue;
+	    if (!ignore_errors)
+	      {
+		int err = errno;
+		ssize_t newsz;
+
+		newval = malloc (sz);
+		if (newval == NULL
+		    || (newsz = getxattr (temp_name, p, newval, sz)) != sz
+		    || memcmp (val, newval, sz) != 0)
+		  {
+		    error (0, err, "Could not set extended attributes for %s",
+			   name);
+		    free (newval);
+		    free (val);
+		    free (list);
+		    return 1;
+		  }
+		free (newval);
+	      }
+	  }
+      }
+  free (val);
+  free (list);
+  return 0;
+
+read_err:
+  error (0, errno, "Could not get extended attributes for %s", name);
+  free (val);
+  free (list);
+  return 1;
+}
+
+static int
+set_security_context (const char *temp_name, const char *name,
+		      int ignore_errors)
 {
 #ifdef USE_SELINUX
   static int selinux_enabled = -1;
@@ -1716,7 +1805,7 @@ set_security_context (DSO *dso, const char *temp_name, const char *name)
 		 name);
 	  return 1;
 	}
-      if (setfilecon (temp_name, scontext) < 0)
+      if (setfilecon (temp_name, scontext) < 0 && !ignore_errors)
 	{
 	  error (0, errno, "Could not set security context for %s",
 		 name);
@@ -1726,7 +1815,46 @@ set_security_context (DSO *dso, const char *temp_name, const char *name)
       freecon (scontext);
     }
 #endif
-  return 0;
+  return copy_xattrs (temp_name, name, ignore_errors);
+}
+
+int
+copy_fd_to_file (int fdin, const char *name, struct stat64 *st)
+{
+  struct stat64 stt;
+  off_t off = 0;
+  int err, fdout;
+  struct utimbuf u;
+
+  if (strcmp (name, "-") == 0)
+    fdout = 1;
+  else
+    fdout = open (name, O_WRONLY | O_CREAT, 0600);
+  if (fdout != -1
+      && fstat64 (fdin, &stt) >= 0
+      && send_file (fdout, fdin, &off, stt.st_size) == stt.st_size)
+    {
+      if (fchown (fdout, st->st_uid, st->st_gid) >= 0)
+	fchmod (fdout, st->st_mode & 07777);
+      if (strcmp (name, "-") != 0)
+	{
+	  set_security_context (name, name, 1);
+	  u.actime = time (NULL);
+	  u.modtime = st->st_mtime;
+	  utime (name, &u);
+	  close (fdout);
+	}
+      return 0;
+    }
+  else if (fdout != -1)
+    {
+      err = errno;
+      if (strcmp (name, "-") == 0)
+	close (fdout);
+    }
+  else
+    err = errno;
+  return err;
 }
 
 int
@@ -1739,6 +1867,7 @@ update_dso (DSO *dso, const char *orig_name)
       char *name1, *name2;
       struct utimbuf u;
       struct stat64 st;
+      int fdin;
 
       switch (write_dso (dso))
 	{
@@ -1761,30 +1890,53 @@ update_dso (DSO *dso, const char *orig_name)
 	  close_dso (dso);
 	  return 1;
 	}
-      if (fchown (dso->fd, st.st_uid, st.st_gid) < 0
-	  || fchmod (dso->fd, st.st_mode & 07777) < 0)
+      if ((fchown (dso->fd, st.st_uid, st.st_gid) < 0
+	   || fchmod (dso->fd, st.st_mode & 07777) < 0)
+	  && orig_name == NULL)
 	{
 	  error (0, errno, "Could not set %s owner or mode", dso->filename);
 	  close_dso (dso);
 	  return 1;
 	}
+      if (orig_name != NULL)
+	fdin = dup (dso->fd);
+      else
+	fdin = -1;
       close_dso_1 (dso);
       u.actime = time (NULL);
       u.modtime = st.st_mtime;
       utime (name2, &u);
 
-      if (set_security_context (dso, name2, orig_name ? orig_name : name1))
+      if (set_security_context (name2, orig_name ? orig_name : name1,
+				orig_name != NULL))
 	{
+	  if (fdin != -1)
+	    close (fdin);
 	  unlink (name2);
 	  return 1;
 	}
 
-      if (rename (name2, name1))
+      if ((orig_name != NULL && strcmp (name1, "-") == 0)
+	  || rename (name2, name1))
 	{
+	  if (fdin != -1)
+	    {
+	      int err = copy_fd_to_file (fdin, name1, &st);
+
+	      close (fdin);
+	      unlink (name2);
+	      if (err == 0)
+		return 0;
+	      error (0, err, "Could not rename nor copy temporary to %s",
+		     name1);
+	      return 1;
+	    }
 	  unlink (name2);
 	  error (0, errno, "Could not rename temporary to %s", name1);
 	  return 1;
 	}
+      if (fdin != -1)
+	close (fdin);
     }
   else
     close_dso_1 (dso);

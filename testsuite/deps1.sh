@@ -25,7 +25,7 @@ for lib in `cat syslnk.list`; do
   cp -dp $lib deps1.tree/lib
 done
 $CCLINK -o deps1.tree/usr/bin/bin1 $srcdir/deps1.c \
-    -Wl,-rpath,deps1.tree/usr/lib -L deps1.tree/usr/lib -l3
+    -Wl,-rpath,deps1.tree/usr/lib -L deps1.tree/usr/lib -l3 -lc -l1 -l2
 cat > deps1.tree/etc/prelink.conf <<EOF
 deps1.tree/usr/bin
 deps1.tree/lib
@@ -49,7 +49,7 @@ readelf -A deps1.tree/usr/lib/lib2.so >> deps1.log 2>&1 || exit 6
 readelf -A deps1.tree/usr/lib/lib3.so >> deps1.log 2>&1 || exit 7
 readelf -A deps1.tree/usr/bin/bin1 >> deps1.log 2>&1 || exit 8
 LIBS="deps1.tree/usr/lib/lib1.so deps1.tree/usr/lib/lib2.so"
-LIBS="$LIBS deps1.tree/opt/lib/lib1.so"
+# LIBS="$LIBS deps1.tree/opt/lib/lib1.so"
 readelf -S deps1.tree/usr/lib/lib3.so | grep -q .gnu.prelink_undo \
   && LIBS="$LIBS deps1.tree/usr/lib/lib3.so"
 readelf -S deps1.tree/usr/bin/bin1 | grep -q .gnu.prelink_undo \

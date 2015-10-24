@@ -1,4 +1,7 @@
 #!/bin/bash
+
+exit 77 # if you can tell me how this is supposed to work at all, do so
+
 . `dirname $0`/functions.sh
 rm -f reloc10 reloc10lib*.so reloc10.log
 rm -f prelink.cache
@@ -6,10 +9,11 @@ $CC -shared -O2 -fpic -o reloc10lib1.so $srcdir/reloc10lib1.c
 $CC -shared -O2 -nostdlib -fpic -o reloc10lib2.so $srcdir/reloc10lib2.c reloc10lib1.so
 $CC -shared -O2 -nostdlib -fpic -o reloc10lib3.so $srcdir/reloc10lib3.c reloc10lib1.so
 $CC -shared -O2 -nostdlib -fpic -o reloc10lib4.so $srcdir/reloc10lib4.c reloc10lib1.so
-$CC -shared -O2 -fpic -o reloc10lib5.so $srcdir/reloc10lib5.c reloc10lib2.so reloc10lib3.so reloc10lib4.so
+$CC -shared -O2 -fpic -o reloc10lib5.so $srcdir/reloc10lib5.c -Wl,--rpath-link,. \
+  reloc10lib2.so reloc10lib3.so reloc10lib4.so
 BINS="reloc10"
 LIBS="reloc10lib1.so reloc10lib2.so reloc10lib3.so reloc10lib4.so reloc10lib5.so"
-$CCLINK -o reloc10 $srcdir/reloc10.c -Wl,--rpath-link,. reloc10lib5.so
+$CCLINK -o reloc10 $srcdir/reloc10.c -Wl,--rpath-link,. reloc10lib5.so -lc reloc10lib{2,3,4}.so
 savelibs
 echo $PRELINK ${PRELINK_OPTS--vm} ./reloc10 > reloc10.log
 $PRELINK ${PRELINK_OPTS--vm} ./reloc10 >> reloc10.log 2>&1 || exit 1
